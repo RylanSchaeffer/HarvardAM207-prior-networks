@@ -9,7 +9,7 @@ num_points = 501
 # ensure num_points is divisible by 3
 num_points = 3 * (num_points // 3)
 mixture_proportions = [1 / 3.0, 1 / 3.0, 1 / 3.0]
-scale = 4.0
+scale = 10.0
 mu = [
     scale * np.asarray([0, 1.0], dtype=np.float32),
     scale * np.asarray([-np.sqrt(3) / 2, -1. / 2], dtype=np.float32),
@@ -131,14 +131,19 @@ soft_labels = one_hot_labels - one_hot_labels*len(mu)*epsilon + epsilon
 # first term of equation 12. See
 # https://github.com/KaosEngineer/PriorNetworks-OLD/blob/master/prior_networks/dirichlet/dirichlet_prior_network_synth.py#L107
 from torch.distributions import Dirichlet
-from torch.distributions.kl import kl_divergence
+from torch.distributions import kl_divergence
+from torch.distributions.kl import _kl_dirichlet_dirichlet
 
 
 def eqn_twelve(model_softmax_outputs, soft_labels):
     target_dirichlet = Dirichlet(soft_labels)
     model_dirichlet = Dirichlet(model_softmax_outputs)
-    kl_div = kl_divergence(target_dirichlet, model_dirichlet)
+    kl_div = _kl_dirichlet_dirichlet(target_dirichlet, model_dirichlet)
     return torch.mean(kl_div)
+
+
+# create new network
+net = Network()
 
 
 # train!
@@ -157,6 +162,9 @@ for step in range(num_training_steps):
     print('Step: {}, Loss: {}'.format(step, loss.item()))
     losses.append(loss.item())
     loss.backward()
+    for p in net.parameters():
+        print('===========\ngradient:{}'.format(p.grad))
+
     optimizer.step()
 
 
