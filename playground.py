@@ -59,6 +59,10 @@ fig = px.scatter(
 # fig.show()
 
 
+# set concentration parameter
+
+alpha_0 = 3.
+
 
 # instantiate classification model
 import torch
@@ -67,19 +71,23 @@ import torch.nn.functional as F
 
 
 class Network(nn.Module):
-    def __init__(self):
+    def __init__(self,
+                 alpha_0=3.):
         super().__init__()
+        self.alpha_0 = alpha_0
         self.weights = nn.Linear(
             in_features=2,
             out_features=3)
 
     def forward(self, x):
-        output = F.softmax(self.weights(x), dim=1)
-        assert_no_nan_no_inf(x)
+        alphas = self.weights(x)
+        assert_no_nan_no_inf(alphas)
+        output = F.softmax(alphas / self.alpha_0, dim=1)
+        assert_no_nan_no_inf(output)
         return output
 
 
-net = Network()
+net = Network(alpha_0=alpha_0)
 
 
 # define typical classification function
@@ -139,8 +147,8 @@ fig.show()
 # define softened labels
 one_hot_labels = F.one_hot(labels).to(torch.float32)
 epsilon = 0.01
-soft_labels = one_hot_labels - one_hot_labels*len(mu)*epsilon + epsilon
-
+soft_labels = one_hot_labels - one_hot_labels * len(mu) * epsilon + epsilon
+soft_concentrations = alpha_0 * soft_labels
 
 # define loss function
 # first term of equation 12. See
@@ -150,14 +158,8 @@ from torch.distributions import kl_divergence
 from torch.distributions.kl import _kl_dirichlet_dirichlet
 
 
-def eqn_twelve(model_softmax_outputs, soft_labels):
-    # model distribution parameters must sum to 1
-    # assert torch.all(torch.sum(model_softmax_outputs, dim=1) == 1.)
-
-    # target distribution parameters must sum to 1
-    # assert torch.all(torch.sum(soft_labels, dim=1) == 1.)
-
-    target_dirichlet = Dirichlet(soft_labels)
+def eqn_twelve(model_softmax_outputs, target_concentrations):
+    target_dirichlet = Dirichlet(target_concentrations)
     model_dirichlet = Dirichlet(model_softmax_outputs)
     kl_divs = _kl_dirichlet_dirichlet(p=target_dirichlet, q=model_dirichlet)
     assert_no_nan_no_inf(kl_divs)
@@ -166,7 +168,7 @@ def eqn_twelve(model_softmax_outputs, soft_labels):
 
 
 # create new network
-net = Network()
+net = Network(alpha_0=alpha_0)
 optimizer = optim.SGD(net.parameters(), lr=0.01)
 
 # train!
@@ -177,18 +179,71 @@ for step in range(num_training_steps):
         np.arange(num_points),
         size=batch_size,
         replace=False)
-    batch_samples, batch_labels = samples[batch_idx], soft_labels[batch_idx]
+    batch_samples = samples[batch_idx]
+    batch_concentrations = soft_concentrations[batch_idx]
     pred_labels = net(batch_samples)
     loss = eqn_twelve(
         model_softmax_outputs=pred_labels,
-        soft_labels=batch_labels)
+        target_concentrations=batch_concentrations)
     print('Step: {}, Loss: {}'.format(step, loss.item()))
     losses.append(loss.item())
     loss.backward()
-    for p in net.parameters():
-        grad_norms.append(np.linalg.norm(p.grad))
-        print('===========\ngradient:{}'.format(p.grad))
+    optimizer.step()
 
+
+# plot training loss
+import plotly.graph_objects as go
+
+
+plot_data = [
+    go.Scatter(
+        x=np.arange(len(losses)),
+        y=losses,
+        mode='lines')
+]
+
+layout = dict(
+    title='Eqn 12 Term 1 Loss Per Batch',
+    yaxis=dict(title='Loss'),
+    xaxis=dict(title='Batch (size={})'.format(batch_size))
+)
+fig = go.Figure(data=plot_data, layout=layout)
+fig.show()
+
+
+# add out of distribution points to our dataset
+num_additional_points = 100
+num_points += num_additional_points
+out_of_dist_samples = torch.tensor(
+    np.random.uniform(-100, 100, size=(num_additional_points, 2))).to(torch.float32)
+out_of_dist_concentrations = torch.tensor(
+    np.ones(shape=(num_additional_points, 3))).to(torch.float32)
+samples = torch.cat((samples, out_of_dist_samples))
+soft_concentrations = torch.cat((soft_concentrations, out_of_dist_concentrations))
+
+
+
+# create new network
+net = Network(alpha_0=alpha_0)
+optimizer = optim.SGD(net.parameters(), lr=0.01)
+
+# train!
+losses, grad_norms = [], []
+for step in range(num_training_steps):
+    optimizer.zero_grad()   # zero the gradient buffers
+    batch_idx = np.random.choice(
+        np.arange(num_points),
+        size=batch_size,
+        replace=False)
+    batch_samples = samples[batch_idx]
+    batch_concentrations = soft_concentrations[batch_idx]
+    pred_labels = net(batch_samples)
+    loss = eqn_twelve(
+        model_softmax_outputs=pred_labels,
+        target_concentrations=batch_concentrations)
+    print('Step: {}, Loss: {}'.format(step, loss.item()))
+    losses.append(loss.item())
+    loss.backward()
     optimizer.step()
 
 
