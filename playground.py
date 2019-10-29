@@ -1,6 +1,11 @@
 import numpy as np
 
 
+def assert_no_nan_no_inf(x):
+    assert not torch.isnan(x).any()
+    assert not torch.isinf(x).any()
+
+
 # create synthetic data set
 # analogous to original synthetic dataset. See:
 # https://github.com/KaosEngineer/PriorNetworks-OLD/blob/master/prior_networks/dirichlet/dirichlet_prior_network_synth.py#L73
@@ -70,6 +75,7 @@ class Network(nn.Module):
 
     def forward(self, x):
         output = F.softmax(self.weights(x), dim=1)
+        assert_no_nan_no_inf(x)
         return output
 
 
@@ -115,10 +121,19 @@ for step in range(num_training_steps):
 import plotly.graph_objects as go
 
 
-fig = go.Figure(go.Scatter(
-    x=np.arange(len(losses)),
-    y=losses,
-    mode='lines'))
+plot_data = [
+    go.Scatter(
+        x=np.arange(len(losses)),
+        y=losses,
+        mode='lines')
+]
+
+layout = dict(
+    title='Negative Log Likelihood Per Batch',
+    yaxis=dict(title='NLL'),
+    xaxis=dict(title='Batch (size={})'.format(batch_size))
+)
+fig = go.Figure(data=plot_data, layout=layout)
 fig.show()
 
 # define softened labels
@@ -136,18 +151,26 @@ from torch.distributions.kl import _kl_dirichlet_dirichlet
 
 
 def eqn_twelve(model_softmax_outputs, soft_labels):
+    # model distribution parameters must sum to 1
+    # assert torch.all(torch.sum(model_softmax_outputs, dim=1) == 1.)
+
+    # target distribution parameters must sum to 1
+    # assert torch.all(torch.sum(soft_labels, dim=1) == 1.)
+
     target_dirichlet = Dirichlet(soft_labels)
     model_dirichlet = Dirichlet(model_softmax_outputs)
-    kl_div = _kl_dirichlet_dirichlet(target_dirichlet, model_dirichlet)
-    return torch.mean(kl_div)
+    kl_divs = _kl_dirichlet_dirichlet(p=target_dirichlet, q=model_dirichlet)
+    assert_no_nan_no_inf(kl_divs)
+    mean_kl = torch.mean(kl_divs)
+    return mean_kl
 
 
 # create new network
 net = Network()
-
+optimizer = optim.SGD(net.parameters(), lr=0.01)
 
 # train!
-losses = []
+losses, grad_norms = [], []
 for step in range(num_training_steps):
     optimizer.zero_grad()   # zero the gradient buffers
     batch_idx = np.random.choice(
@@ -163,6 +186,7 @@ for step in range(num_training_steps):
     losses.append(loss.item())
     loss.backward()
     for p in net.parameters():
+        grad_norms.append(np.linalg.norm(p.grad))
         print('===========\ngradient:{}'.format(p.grad))
 
     optimizer.step()
@@ -172,8 +196,17 @@ for step in range(num_training_steps):
 import plotly.graph_objects as go
 
 
-fig = go.Figure(go.Scatter(
-    x=np.arange(len(losses)),
-    y=losses,
-    mode='lines'))
+plot_data = [
+    go.Scatter(
+        x=np.arange(len(losses)),
+        y=losses,
+        mode='lines')
+]
+
+layout = dict(
+    title='Eqn 12 Term 1 Loss Per Batch',
+    yaxis=dict(title='Loss'),
+    xaxis=dict(title='Batch (size={})'.format(batch_size))
+)
+fig = go.Figure(data=plot_data, layout=layout)
 fig.show()
