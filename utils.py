@@ -248,7 +248,7 @@ def plot_decision_surface(model,
     
     # discretize input space i.e. all possible pairs of coordinates
     # between [-40, 40] x [-40, 40]
-    possible_vals = np.linspace(-100, 100, 201)
+    possible_vals = np.linspace(-40, 40, 81)
     x_vals, y_vals = np.meshgrid(possible_vals, possible_vals)
     inputs = np.stack((x_vals.flatten(), y_vals.flatten()), axis=1)
     inputs = torch.tensor(inputs, dtype=torch.float32)
