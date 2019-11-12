@@ -8,7 +8,6 @@ from torch.distributions.kl import _kl_dirichlet_dirichlet
 import torch.nn.functional as F
 import tqdm
 
-
 import models
 
 
@@ -52,57 +51,134 @@ def create_data(args,
                 n_clusters=3,
                 scale=10,
                 print=True):
-
     """
     #TODO-implement so that we can actually choose other inputs
     - Args to specify the mean variances if need be, under the form mu_1, sigma_1" and so on
     output: np.array with samples from each gaussian.
     """
-    mu_1, sigma_1 = scale * \
-                    np.array([0.0, 1.0]), np.array([[2.0, 0], [0, 2.0]])
-    mu_2, sigma_2 = scale * \
-                    np.array([-np.sqrt(3) / 2, -1. / 2]), np.array([[2.0, 0], [0, 2.0]])
-    mu_3, sigma_3 = scale * \
-                    np.array([np.sqrt(3) / 2, -1. / 2]), np.array([[2.0, 0], [0, 2.0]])
+    means = np.array([
+        [0., 2.],
+        [-np.sqrt(3), -1.],
+        [np.sqrt(3), -1.],
+        [0., 0.]])
+    means *= 10
 
-    X_1 = np.random.multivariate_normal(
-        mean=mu_1, cov=sigma_1, size=points_per_cluster)
-    X_2 = np.random.multivariate_normal(
-        mean=mu_2, cov=sigma_2, size=points_per_cluster)
-    X_3 = np.random.multivariate_normal(
-        mean=mu_3, cov=sigma_3, size=points_per_cluster)
+    covariances = np.array([
+        [[2.0, 0], [0, 2.0]],
+        [[2.0, 0], [0, 2.0]],
+        [[2.0, 0], [0, 2.0]],
+        [[2.0, 0], [0, 2.0]],
+    ])
 
-    Y_1, Y_2, Y_3 = np.zeros((len(X_1), 1)), np.ones(
-        (len(X_1), 1)), 2 * np.ones((len(X_1), 1))
-    # if print:
-    #     fig, ax = plt.subplots(1, 1, figsize=(20, 5))
-    #     ax.scatter(X_1[:, 0], X_1[:, 1], color='r')
-    #     ax.scatter(X_2[:, 0], X_2[:, 1], color='b')
-    #     ax.scatter(X_3[:, 0], X_3[:, 1], color='y')
-    #     plt.show()
+    n_train_samples_per_gaussian = np.array([100, 100, 100, 100])
 
-    x_train = np.concatenate([X_1, X_2, X_3], axis=0)
-    y_train = np.concatenate([Y_1, Y_2, Y_3], axis=0)
+    out_of_distribution_gaussians = np.array([False, False, False, True])
+
+    mog_samples, mog_labels, mog_concentrations = create_data_mixture_of_gaussians(
+        means=means,
+        covariances=covariances,
+        n_samples_per_gaussian=n_train_samples_per_gaussian,
+        out_of_distribution_gaussians=out_of_distribution_gaussians)
+
+    x_train = torch.tensor(
+        mog_samples,
+        dtype=torch.float)
+    labels_train = torch.tensor(
+        mog_labels,
+        dtype=torch.long)
+    concentrations_train = torch.tensor(
+        mog_concentrations,
+        dtype=torch.float32)
+
+    assert_no_nan_no_inf(x_train)
+    assert_no_nan_no_inf(labels_train)
+    assert_no_nan_no_inf(concentrations_train)
+
+    data = dict(
+        x_train=x_train,
+        labels_train=labels_train,
+        concentrations_train=concentrations_train,
+        x_test=x_train,
+        labels_test=labels_train,
+        concentrations_test=concentrations_train)
+
+    return data
+
+
+def create_data_mixture_of_gaussians(means,
+                                     covariances,
+                                     n_samples_per_gaussian,
+                                     out_of_distribution_gaussians,
+                                     prev_samples=None,
+                                     prev_labels=None,
+                                     prev_concentrations=None):
+    """
+    Creates a mixture of Gaussians with corresponding labels and Dirichlet
+    concentration parameters. If x_data and y_data are given, append the new
+    samples to x_data, y_data and return those instead.
+
+
+    :param prev_samples:
+    :param prev_concentrations:
+    :param prev_labels:
+    :param means: shape (number of gaussians, dim of gaussian)
+    :param covariances: shape (number of gaussians, dim of gaussian, dim_of_gaussian)
+    :param n_samples_per_gaussian: int, shape (number of gaussians, )
+    :param out_of_distribution_gaussians: bool,  shape (number of gaussians, )
+    :return mog_samples: shape (sum(n_samples_per_gaussian), dim of gaussian)
+    :return mog_labels: int, shape (sum(n_samples_per_gaussian), )
+    :return mog_concentrations: shape (sum(n_samples_per_gaussian), dim of gaussian)
+    """
+
+    dim_of_gaussians = means.shape[1]
+    n_total_samples = n_samples_per_gaussian.sum()
+
+    # preallocate arrays to store new samples
+    mog_samples = np.zeros(shape=(n_total_samples, dim_of_gaussians))
+    mog_labels = np.zeros(shape=(n_total_samples,), dtype=np.int)
+
+    write_index = 0
+    for i, (mean, covariance, n_samples) in \
+            enumerate(zip(means, covariances, n_samples_per_gaussian)):
+        # generate and save samples
+        gaussian_samples = np.random.multivariate_normal(
+            mean=mean, cov=covariance, size=n_samples)
+        mog_samples[write_index:write_index + n_samples] = gaussian_samples
+
+        # generate and save labels
+        gaussian_labels = np.full(shape=n_samples, fill_value=i)
+        mog_labels[write_index:write_index + n_samples] = gaussian_labels
+
+        write_index += n_samples
+
+    # generate concentrations
+    n_gaussians = (~out_of_distribution_gaussians).sum()
+    mog_concentrations = np.ones((n_total_samples, n_gaussians))
+    in_distribution_rows = np.isin(
+        mog_labels,
+        np.argwhere(~out_of_distribution_gaussians))
+    mog_concentrations[in_distribution_rows, mog_labels[in_distribution_rows]] += 100
 
     # shuffle data
     shuffle_indices = np.random.choice(
-        np.arange(len(x_train)),
-        size=len(x_train),
+        np.arange(n_total_samples),
+        size=n_total_samples,
         replace=False)
-    x_train = torch.tensor(
-        x_train[shuffle_indices],
-        dtype=torch.float)
-    y_train = torch.tensor(
-        y_train[shuffle_indices],
-        dtype=torch.long)
+    mog_samples = mog_samples[shuffle_indices]
+    mog_labels = mog_labels[shuffle_indices]
+    mog_concentrations = mog_concentrations[shuffle_indices]
 
-    target_concentrations = get_target_dirichlet(
-        y_train, alpha_0=2)  # new 'labels'
+    # append new samples to previous data, if provided
+    if prev_samples is not None:
+        # check that other arrays are also not None
+        assert prev_labels is not None
+        assert prev_concentrations is not None
 
-    assert_no_nan_no_inf(x_train)
-    assert_no_nan_no_inf(y_train)
+        mog_samples = np.concatenate((mog_samples, prev_samples), axis=0)
+        mog_labels = np.concatenate((mog_labels, prev_labels), axis=0)
+        mog_concentrations = np.concatenate((mog_concentrations, prev_concentrations), axis=0)
 
-    return x_train, target_concentrations, x_train, target_concentrations
+    return mog_samples, mog_labels, mog_concentrations
 
 
 def create_loss_fn():
@@ -124,9 +200,7 @@ def create_optimizer(model):
 
 def eval_model(model,
                x_test,
-               y_test,
-               test_loader=None):
-
+               y_test):
     # set model in eval mode
     model.eval()
 
@@ -141,18 +215,40 @@ def eval_model(model,
     return accuracy, pred_proba, pred_class
 
 
-def plot_all(model,
+def plot_all(x_train,
+             labels_train,
+             concentrations_train,
+             model,
              training_loss):
-
+    plot_training_data(x_train=x_train, labels_train=labels_train)
     plot_training_loss(training_loss=training_loss)
-    plot_decision_surface(model)
+    plot_decision_surface(model=model, x_train=x_train, labels_train=labels_train)
 
 
-def plot_decision_surface(model):
+def plot_training_data(x_train,
+                       labels_train):
+    plot_data = go.Scatter(
+        x=x_train[:, 0],
+        y=x_train[:, 1],
+        mode='markers',
+        marker=dict(color=labels_train))
 
+    layout = dict(
+        title='Training Data',
+        xaxis=dict(title='x'),
+        yaxis=dict(title='y'))
+
+    fig = go.Figure(data=plot_data, layout=layout)
+    fig.show()
+
+
+def plot_decision_surface(model,
+                          x_train,
+                          labels_train):
+    
     # discretize input space i.e. all possible pairs of coordinates
     # between [-40, 40] x [-40, 40]
-    possible_vals = np.linspace(-40, 40, 160)
+    possible_vals = np.linspace(-100, 100, 201)
     x_vals, y_vals = np.meshgrid(possible_vals, possible_vals)
     inputs = np.stack((x_vals.flatten(), y_vals.flatten()), axis=1)
     inputs = torch.tensor(inputs, dtype=torch.float32)
@@ -163,9 +259,16 @@ def plot_decision_surface(model):
     strength_of_mean = torch.max(means, dim=1)[0].detach().numpy()
 
     plot_data = [
+        # add model outputs
         go.Surface(x=possible_vals,
                    y=possible_vals,
-                   z=strength_of_mean.reshape(x_vals.shape))
+                   z=strength_of_mean.reshape(x_vals.shape)),
+        # add training points
+        go.Scatter3d(x=x_train[:, 0],
+                     y=x_train[:, 1],
+                     z=1.1 * np.ones(x_train.shape[0]),
+                     mode='markers',
+                     marker=dict(color=labels_train))
     ]
 
     fig = go.Figure(data=plot_data)
@@ -173,7 +276,6 @@ def plot_decision_surface(model):
 
 
 def plot_training_loss(training_loss):
-
     plot_data = go.Scatter(
         x=np.arange(len(training_loss)),
         y=training_loss)
@@ -209,7 +311,6 @@ def train_model(model,
                 batch_size,
                 x_train,
                 y_train):
-
     # set model in training mode
     model.train()
 
@@ -218,11 +319,11 @@ def train_model(model,
     for epoch in range(n_epochs):
         for start_index in range(0, len(x_train), batch_size):
             optimizer.zero_grad()
-            x_batch = x_train[start_index:start_index+batch_size]
-            y_batch = y_train[start_index:start_index+batch_size]
-            y_hat, mean, alphas, precision = model(x_batch)
+            x_train_batch = x_train[start_index:start_index + batch_size]
+            y_train_batch = y_train[start_index:start_index + batch_size]
+            y_hat, mean, alphas, precision = model(x_train_batch)
             assert_no_nan_no_inf(y_hat)
-            batch_loss = loss_fn(y_hat, y_batch)
+            batch_loss = loss_fn(y_hat, y_train_batch)
             assert_no_nan_no_inf(batch_loss)
             training_loss.append(batch_loss.item())
             batch_loss.backward()
