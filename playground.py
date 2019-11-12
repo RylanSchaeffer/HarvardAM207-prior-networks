@@ -1,9 +1,7 @@
 import numpy as np
 
 
-def assert_no_nan_no_inf(x):
-    assert not torch.isnan(x).any()
-    assert not torch.isinf(x).any()
+
 
 
 # create synthetic data set

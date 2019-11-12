@@ -81,10 +81,20 @@ def create_data(args,
     #     ax.scatter(X_3[:, 0], X_3[:, 1], color='y')
     #     plt.show()
 
-    X_train = np.concatenate([X_1, X_2, X_3], axis=0)
-    Y_train = np.concatenate([Y_1, Y_2, Y_3], axis=0)
-    x_train = torch.tensor(X_train, dtype=torch.float)
-    y_train = torch.tensor(Y_train, dtype=torch.long)  # type long for the target.
+    x_train = np.concatenate([X_1, X_2, X_3], axis=0)
+    y_train = np.concatenate([Y_1, Y_2, Y_3], axis=0)
+
+    # shuffle data
+    shuffle_indices = np.random.choice(
+        np.arange(len(x_train)),
+        size=len(x_train),
+        replace=False)
+    x_train = torch.tensor(
+        x_train[shuffle_indices],
+        dtype=torch.float)
+    y_train = torch.tensor(
+        y_train[shuffle_indices],
+        dtype=torch.long)
 
     target_concentrations = get_target_dirichlet(
         y_train, alpha_0=2)  # new 'labels'
@@ -139,7 +149,27 @@ def plot_all(model,
 
 
 def plot_decision_surface(model):
-    pass
+
+    # discretize input space i.e. all possible pairs of coordinates
+    # between [-40, 40] x [-40, 40]
+    possible_vals = np.linspace(-40, 40, 160)
+    x_vals, y_vals = np.meshgrid(possible_vals, possible_vals)
+    inputs = np.stack((x_vals.flatten(), y_vals.flatten()), axis=1)
+    inputs = torch.tensor(inputs, dtype=torch.float32)
+
+    # forward pass model
+    y_hat, means, alphas, precision = model(inputs)
+
+    strength_of_mean = torch.max(means, dim=1)[0].detach().numpy()
+
+    plot_data = [
+        go.Surface(x=possible_vals,
+                   y=possible_vals,
+                   z=strength_of_mean.reshape(x_vals.shape))
+    ]
+
+    fig = go.Figure(data=plot_data)
+    fig.show()
 
 
 def plot_training_loss(training_loss):
@@ -151,7 +181,7 @@ def plot_training_loss(training_loss):
     layout = dict(
         title='Training Loss per Gradient Step',
         xaxis=dict(title='Gradient Step'),
-        yaxis=dict('Training Loss'))
+        yaxis=dict(title='Training Loss'))
 
     fig = go.Figure(data=plot_data, layout=layout)
     fig.show()
