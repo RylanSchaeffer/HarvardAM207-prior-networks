@@ -191,10 +191,10 @@ def create_model():
     return model
 
 
-def create_optimizer(model):
+def create_optimizer(model, lr=0.01):
     for name, param in model.named_parameters():
         print(name, "Requires grad?", param.requires_grad)
-    optimizer = torch.optim.Adam(model.parameters())
+    optimizer = torch.optim.Adam(model.parameters() ,lr=0.01)
     return optimizer
 
 
@@ -204,7 +204,7 @@ def eval_model(model,
     # set model in eval mode
     model.eval()
 
-    # TODO-Add a sequenial test loader
+    # TODO-Add a sequential test loader
     y_hat, means, alphas, precision = model(x_test)
     assert_no_nan_no_inf(y_hat)
     pred_proba, pred_class = torch.max(y_hat, 1)
@@ -297,7 +297,7 @@ def setup(args):
     device = "gpu:0" if torch.cuda.is_available() else "cpu"
 
     # TODO: has anyone checked that the following line actually places
-    # tensors on the GPU?
+    # tensors on the GPU? 
     device = torch.device(device)
     logging.info('Working on device: ', device)
 
@@ -311,6 +311,11 @@ def train_model(model,
                 batch_size,
                 x_train,
                 y_train):
+
+    # TODO: Keep track of the alphas parameters. Maybe an output dictionnary so that we can
+    # keep track or more/less things that we want to investigate, e.g:
+    # tracks = {'training_loss':[], 'alphas':[], ...}
+
     # set model in training mode
     model.train()
 
@@ -334,11 +339,12 @@ def train_model(model,
 
 
 def get_target_dirichlet(y_train, alpha_0, nb_class=3, epsilon=1e-4):
-    """alpha_0  Hyperparameter-> specify the sharpness.
-    epsilon ->Smoothing param
-    nb_class
-    output: target_dirichlet -> torch.distributions.Dirichlet.
-    access to concentration parameters with output.concentration"""
+    """Input: 
+        - alpha_0 : Hyperparameter to specify the sharpness.
+        - epsilon: Smoothing parameter
+        - nb_class: Explicit
+    Output: target_dirichlet: torch.distributions.Dirichlet object
+        access to concentration parameters with output.concentration"""
     one_hot_labels = F.one_hot(y_train.squeeze()).to(torch.float32)
     soft_labels = one_hot_labels - one_hot_labels * nb_class * epsilon + epsilon
     target_concentrations = alpha_0 * soft_labels
@@ -349,12 +355,12 @@ def get_target_dirichlet(y_train, alpha_0, nb_class=3, epsilon=1e-4):
 # TODO: get this working
 def kl_loss(model_concentrations, target_concentrations, reverse=True):
     """
-    Input: Model softmax outputs or anything else that we want to build
-    our Dirichlet distribution on.
+    Input: Model concentrations, target concentrations parameters.
+    Output: Average of the KL between the two Dirichlet.
     """
     target_dirichlet = Dirichlet(target_concentrations)
     model_dirichlet = Dirichlet(
-        model_concentrations)  # is that what we want ? Our concentrations parameters. sum to one at the end, no matter what alpha_0
+        model_concentrations) 
     if reverse:
         kl_divs = _kl_dirichlet_dirichlet(
             p=target_dirichlet, q=model_dirichlet)
