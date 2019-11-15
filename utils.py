@@ -3,7 +3,7 @@ import logging
 import numpy as np
 import plotly.graph_objects as go
 import torch
-from torch.distributions import Dirichlet
+from torch.distributions import Categorical, Dirichlet
 from torch.distributions.kl import _kl_dirichlet_dirichlet
 import torch.nn.functional as F
 import tqdm
@@ -30,7 +30,7 @@ def create_arg_parser():
     parser.add_argument('--n_epochs',
                         help='Number of epochs to train',
                         type=int,
-                        default=10)
+                        default=200)
     parser.add_argument('--batch_size',
                         help='Number of data per batch',
                         type=int,
@@ -198,6 +198,18 @@ def create_optimizer(model, lr=0.01):
     return optimizer
 
 
+def entropy_categorical(categorical_parameters):
+    entropy = Categorical(categorical_parameters).entropy()
+    entropy = entropy.detach().numpy()
+    return entropy
+
+
+def entropy_dirichlet(dirichlet_concentrations):
+    entropy = Dirichlet(dirichlet_concentrations).entropy()
+    entropy = entropy.detach().numpy()
+    return entropy
+
+
 def eval_model(model,
                x_test,
                y_test):
@@ -213,6 +225,29 @@ def eval_model(model,
         (pred_class == true_class).sum().type(torch.float32),
         len(y_test))
     return accuracy, pred_proba, pred_class
+
+
+def kl_loss(model_concentrations, target_concentrations, reverse=True):
+    """
+    Input: Model concentrations, target concentrations parameters.
+    Output: Average of the KL between the two Dirichlet.
+    """
+    assert torch.all(model_concentrations > 0)
+    assert torch.all(target_concentrations > 0)
+
+    target_dirichlet = Dirichlet(target_concentrations)
+    model_dirichlet = Dirichlet(model_concentrations)
+    if reverse:
+        kl_divs = _kl_dirichlet_dirichlet(
+            p=model_dirichlet,
+            q=target_dirichlet)
+    else:
+        kl_divs = _kl_dirichlet_dirichlet(
+            p=target_dirichlet,
+            q=model_dirichlet)
+    assert_no_nan_no_inf(kl_divs)
+    mean_kl = torch.mean(kl_divs)
+    return mean_kl
 
 
 def plot_all(x_train,
@@ -256,13 +291,13 @@ def plot_decision_surface(model,
     # forward pass model
     y_hat, means, alphas, precision = model(grid_inputs)
 
-    strength_of_mean = torch.max(means, dim=1)[0].detach().numpy()
+    entropy_of_means = entropy_categorical(categorical_parameters=means)
 
     plot_data = [
         # add model outputs
         go.Surface(x=possible_vals,
                    y=possible_vals,
-                   z=strength_of_mean.reshape(x_vals.shape)),
+                   z=entropy_of_means.reshape(x_vals.shape)),
         # add training points
         go.Scatter3d(x=x_train[:, 0],
                      y=x_train[:, 1],
@@ -346,40 +381,3 @@ def train_model(model,
         print("Last obtained batch_loss", batch_loss.item())
 
     return model, optimizer, training_loss
-
-
-def get_target_dirichlet(y_train, alpha_0, nb_class=3, epsilon=1e-4):
-    """Input: 
-        - alpha_0 : Hyperparameter to specify the sharpness.
-        - epsilon: Smoothing parameter
-        - nb_class: Explicit
-    Output: target_dirichlet: torch.distributions.Dirichlet object
-        access to concentration parameters with output.concentration"""
-    one_hot_labels = F.one_hot(y_train.squeeze()).to(torch.float32)
-    soft_labels = one_hot_labels - one_hot_labels * nb_class * epsilon + epsilon
-    target_concentrations = alpha_0 * soft_labels
-    # target_dirichlet = Dirichlet(target_concentrations)
-    return target_concentrations
-
-
-def kl_loss(model_concentrations, target_concentrations, reverse=True):
-    """
-    Input: Model concentrations, target concentrations parameters.
-    Output: Average of the KL between the two Dirichlet.
-    """
-    assert torch.all(model_concentrations > 0)
-    assert torch.all(target_concentrations > 0)
-
-    target_dirichlet = Dirichlet(target_concentrations)
-    model_dirichlet = Dirichlet(model_concentrations)
-    if reverse:
-        kl_divs = _kl_dirichlet_dirichlet(
-            p=model_dirichlet,
-            q=target_dirichlet)
-    else:
-        kl_divs = _kl_dirichlet_dirichlet(
-            p=target_dirichlet,
-            q=model_dirichlet)
-    assert_no_nan_no_inf(kl_divs)
-    mean_kl = torch.mean(kl_divs)
-    return mean_kl

@@ -9,7 +9,7 @@ def main(args):
         model=model,
         optimizer=optimizer,
         loss_fn=loss_fn,
-        n_epochs=args.n_epochs*100,
+        n_epochs=args.n_epochs,
         batch_size=args.batch_size,
         x_train=data['x_train'],
         target_concentrations=data['concentrations_train'])
