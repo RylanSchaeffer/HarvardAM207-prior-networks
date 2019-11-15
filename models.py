@@ -47,7 +47,7 @@ class TwoLayer(nn.Module):
     def forward(self, x):
         logits = self.feedforward_layers(x)
         # TODO: ask Theo what mean is
-        alphas = torch.exp(logits) + 0.1
+        alphas = torch.exp(logits) # + 0.1
         mean = alphas / alphas.sum(dim=1).unsqueeze(dim=1)
         precision = torch.sum(alphas)
         return logits, mean, alphas, precision

@@ -30,7 +30,7 @@ def create_arg_parser():
     parser.add_argument('--n_epochs',
                         help='Number of epochs to train',
                         type=int,
-                        default=200)
+                        default=500)
     parser.add_argument('--batch_size',
                         help='Number of data per batch',
                         type=int,
@@ -60,8 +60,8 @@ def create_data(args,
         [0., 2.],
         [-np.sqrt(3), -1.],
         [np.sqrt(3), -1.],
-        [-20., -20.]])
-    means *= 2
+        [-4., -4.]])
+    means *= 10
 
     covariances = np.array([
         [[2.0, 0], [0, 2.0]],
@@ -186,8 +186,10 @@ def create_loss_fn():
     # return torch.nn.CrossEntropyLoss
 
 
-def create_model():
-    model = models.TwoLayer(n_in=2, n_out=3, n_hidden=12)
+def create_model(n_in,
+                 n_out):
+
+    model = models.TwoLayer(n_in=n_in, n_out=n_out, n_hidden=12)
     return model
 
 
@@ -306,9 +308,16 @@ def plot_decision_surface(model,
                      marker=dict(color=labels_train))
     ]
 
-    # TODO: Label axes
+    layout = dict(
+        title='Decision Surface',
+        scene=dict(
+            zaxis=dict(title='Entropy of Mu'),
+            xaxis=dict(title='input_dim_1'),
+            yaxis=dict(title='input_dim_2')
+        )
+    )
 
-    fig = go.Figure(data=plot_data)
+    fig = go.Figure(data=plot_data, layout=layout)
     fig.show()
 
 
@@ -327,10 +336,12 @@ def plot_training_loss(training_loss):
 
 
 def setup(args):
-    model = create_model()
+    data = create_data(args=args)
+    model = create_model(
+        n_in=data['x_train'].shape[1],
+        n_out=data['concentrations_train'].shape[1])
     optimizer = create_optimizer(model=model)
     loss_fn = create_loss_fn()
-    data = create_data(args=args)
     device = "gpu:0" if torch.cuda.is_available() else "cpu"
 
     # TODO: has anyone checked that the following line actually places
