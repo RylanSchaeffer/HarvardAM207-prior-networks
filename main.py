@@ -8,7 +8,8 @@ def main(args):
 
     model, optimizer, loss_fn = utils_run.setup(
         args=args,
-        data=data)
+        in_dim=data['x_train'].shape[1],
+        out_dim=data['concentrations_train'].shape[1])
 
     model, optimizer, training_loss = utils_run.train_model(
         model=model,

@@ -217,8 +217,8 @@ def setup(args,
           in_dim,
           out_dim):
     model = create_model(
-        in_dim=in_dim['x_train'].shape[1],
-        out_dim=out_dim['concentrations_train'].shape[1])
+        in_dim=in_dim,
+        out_dim=out_dim)
     optimizer = create_optimizer(model=model)
     loss_fn = create_loss_fn(reverse=args.reverse)
     device = "gpu:0" if torch.cuda.is_available() else "cpu"
