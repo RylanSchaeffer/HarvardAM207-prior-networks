@@ -46,13 +46,8 @@ def create_arg_parser():
     return parser
 
 
-def create_data(args,
-                points_per_cluster=100,
-                n_clusters=3,
-                scale=10,
-                print=True):
+def create_data():
     """
-    #TODO-implement so that we can actually choose other inputs
     - Args to specify the mean variances if need be, under the form mu_1, sigma_1" and so on
     output: np.array with samples from each gaussian.
     """
@@ -93,6 +88,7 @@ def create_data(args,
     assert_no_nan_no_inf(x_train)
     assert_no_nan_no_inf(labels_train)
     assert_no_nan_no_inf(concentrations_train)
+    assert torch.all(concentrations_train > 0)
 
     data = dict(
         x_train=x_train,
@@ -181,14 +177,34 @@ def create_data_mixture_of_gaussians(means,
     return mog_samples, mog_labels, mog_concentrations
 
 
-def create_loss_fn():
-    return kl_loss
-    # return torch.nn.CrossEntropyLoss
+def create_data_ring(prev_samples=None,
+                     prev_labels=None,
+                     prev_concentrations=None):
+
+
+
+    # append new samples to previous data, if provided
+    if prev_samples is not None:
+        # check that other arrays are also not None
+        assert prev_labels is not None
+        assert prev_concentrations is not None
+
+        mog_samples = np.concatenate((mog_samples, prev_samples), axis=0)
+        mog_labels = np.concatenate((mog_labels, prev_labels), axis=0)
+        mog_concentrations = np.concatenate((mog_concentrations, prev_concentrations), axis=0)
+
+    return mog_samples, mog_labels, mog_concentrations
+
+
+def create_loss_fn(reverse):
+    if reverse:
+        return kl_backward
+    else:
+        return kl_forward
 
 
 def create_model(n_in,
                  n_out):
-
     model = models.TwoLayer(n_in=n_in, n_out=n_out, n_hidden=12)
     return model
 
@@ -229,7 +245,7 @@ def eval_model(model,
     return accuracy, pred_proba, pred_class
 
 
-def kl_loss(model_concentrations, target_concentrations, reverse=True):
+def kl_backward(model_concentrations, target_concentrations):
     """
     Input: Model concentrations, target concentrations parameters.
     Output: Average of the KL between the two Dirichlet.
@@ -239,14 +255,27 @@ def kl_loss(model_concentrations, target_concentrations, reverse=True):
 
     target_dirichlet = Dirichlet(target_concentrations)
     model_dirichlet = Dirichlet(model_concentrations)
-    if reverse:
-        kl_divs = _kl_dirichlet_dirichlet(
-            p=model_dirichlet,
-            q=target_dirichlet)
-    else:
-        kl_divs = _kl_dirichlet_dirichlet(
-            p=target_dirichlet,
-            q=model_dirichlet)
+    kl_divs = _kl_dirichlet_dirichlet(
+        p=model_dirichlet,
+        q=target_dirichlet)
+    assert_no_nan_no_inf(kl_divs)
+    mean_kl = torch.mean(kl_divs)
+    return mean_kl
+
+
+def kl_forward(model_concentrations, target_concentrations):
+    """
+    Input: Model concentrations, target concentrations parameters.
+    Output: Average of the KL between the two Dirichlet.
+    """
+    assert torch.all(model_concentrations > 0)
+    assert torch.all(target_concentrations > 0)
+
+    target_dirichlet = Dirichlet(target_concentrations)
+    model_dirichlet = Dirichlet(model_concentrations)
+    kl_divs = _kl_dirichlet_dirichlet(
+        p=target_dirichlet,
+        q=model_dirichlet)
     assert_no_nan_no_inf(kl_divs)
     mean_kl = torch.mean(kl_divs)
     return mean_kl
@@ -282,7 +311,6 @@ def plot_training_data(x_train,
 def plot_decision_surface(model,
                           x_train,
                           labels_train):
-    
     # discretize input space i.e. all possible pairs of coordinates
     # between [-40, 40] x [-40, 40]
     possible_vals = np.linspace(-40, 40, 81)
@@ -336,16 +364,15 @@ def plot_training_loss(training_loss):
 
 
 def setup(args):
-    data = create_data(args=args)
+    data = create_data()
     model = create_model(
         n_in=data['x_train'].shape[1],
         n_out=data['concentrations_train'].shape[1])
     optimizer = create_optimizer(model=model)
-    loss_fn = create_loss_fn()
+    loss_fn = create_loss_fn(reverse=args.reverse)
     device = "gpu:0" if torch.cuda.is_available() else "cpu"
 
-    # TODO: has anyone checked that the following line actually places
-    # tensors on the GPU? 
+    # TODO: check that the following code places tensors on the GPU
     device = torch.device(device)
     logging.info('Working on device: ', device)
 
@@ -359,7 +386,6 @@ def train_model(model,
                 batch_size,
                 x_train,
                 target_concentrations):
-
     # TODO: Keep track of the model_concentrations parameters. Maybe an output dictionnary so that we can
     # keep track or more/less things that we want to investigate, e.g:
     # tracks = {'training_loss':[], 'model_concentrations':[], ...}
@@ -372,7 +398,6 @@ def train_model(model,
     num_samples = x_train.shape[0]
     for epoch in range(n_epochs):
         for _ in range(num_samples // batch_size):
-
             # randomly sample indices for batch
             batch_indices = np.random.choice(
                 np.arange(x_train.shape[0]),
