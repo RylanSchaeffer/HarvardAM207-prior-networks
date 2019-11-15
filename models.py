@@ -42,12 +42,12 @@ class TwoLayer(nn.Module):
         self.feedforward_layers = nn.Sequential(
             nn.Linear(n_in, n_hidden),
             nn.LeakyReLU(),
-            nn.Linear(n_hidden, n_out),)
+            nn.Linear(n_hidden, n_out))
 
     def forward(self, x):
         logits = self.feedforward_layers(x)
         # TODO: ask Theo what mean is
-        mean = F.softmax(logits / self.alpha_0, dim=1)  # I have doubts about alpha 0..
-        alphas = torch.exp(logits)
+        alphas = torch.exp(logits) + 0.1
+        mean = alphas / alphas.sum(dim=1).unsqueeze(dim=1)
         precision = torch.sum(alphas)
         return logits, mean, alphas, precision

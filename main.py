@@ -9,15 +9,17 @@ def main(args):
         model=model,
         optimizer=optimizer,
         loss_fn=loss_fn,
-        n_epochs=args.n_epochs,
+        n_epochs=args.n_epochs*100,
         batch_size=args.batch_size,
         x_train=data['x_train'],
-        y_train=data['concentrations_train'])
+        target_concentrations=data['concentrations_train'])
 
     accuracy, pred_proba, pred_class = utils.eval_model(
         model=model,
         x_test=data['x_test'],
         y_test=data['concentrations_test'])
+
+    # ood_indices = data['concentrations_test'].sum(1) == 3.
 
     utils.plot_all(
         x_train=data['x_train'],

@@ -60,8 +60,8 @@ def create_data(args,
         [0., 2.],
         [-np.sqrt(3), -1.],
         [np.sqrt(3), -1.],
-        [0., 0.]])
-    means *= 10
+        [-20., -20.]])
+    means *= 2
 
     covariances = np.array([
         [[2.0, 0], [0, 2.0]],
@@ -194,7 +194,7 @@ def create_model():
 def create_optimizer(model, lr=0.01):
     for name, param in model.named_parameters():
         print(name, "Requires grad?", param.requires_grad)
-    optimizer = torch.optim.Adam(model.parameters() ,lr=0.01)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
     return optimizer
 
 
@@ -207,7 +207,7 @@ def eval_model(model,
     # TODO-Add a sequential test loader
     y_hat, means, alphas, precision = model(x_test)
     assert_no_nan_no_inf(y_hat)
-    pred_proba, pred_class = torch.max(y_hat, 1)
+    pred_proba, pred_class = torch.max(means, 1)
     _, true_class = torch.max(y_test, 1)
     accuracy = torch.div(
         (pred_class == true_class).sum().type(torch.float32),
@@ -250,11 +250,11 @@ def plot_decision_surface(model,
     # between [-40, 40] x [-40, 40]
     possible_vals = np.linspace(-40, 40, 81)
     x_vals, y_vals = np.meshgrid(possible_vals, possible_vals)
-    inputs = np.stack((x_vals.flatten(), y_vals.flatten()), axis=1)
-    inputs = torch.tensor(inputs, dtype=torch.float32)
+    grid_inputs = np.stack((x_vals.flatten(), y_vals.flatten()), axis=1)
+    grid_inputs = torch.tensor(grid_inputs, dtype=torch.float32)
 
     # forward pass model
-    y_hat, means, alphas, precision = model(inputs)
+    y_hat, means, alphas, precision = model(grid_inputs)
 
     strength_of_mean = torch.max(means, dim=1)[0].detach().numpy()
 
@@ -270,6 +270,8 @@ def plot_decision_surface(model,
                      mode='markers',
                      marker=dict(color=labels_train))
     ]
+
+    # TODO: Label axes
 
     fig = go.Figure(data=plot_data)
     fig.show()
@@ -310,25 +312,33 @@ def train_model(model,
                 n_epochs,
                 batch_size,
                 x_train,
-                y_train):
+                target_concentrations):
 
-    # TODO: Keep track of the alphas parameters. Maybe an output dictionnary so that we can
+    # TODO: Keep track of the model_concentrations parameters. Maybe an output dictionnary so that we can
     # keep track or more/less things that we want to investigate, e.g:
-    # tracks = {'training_loss':[], 'alphas':[], ...}
+    # tracks = {'training_loss':[], 'model_concentrations':[], ...}
 
     # set model in training mode
     model.train()
 
     # train model
     training_loss = []
+    num_samples = x_train.shape[0]
     for epoch in range(n_epochs):
-        for start_index in range(0, len(x_train), batch_size):
+        for _ in range(num_samples // batch_size):
+
+            # randomly sample indices for batch
+            batch_indices = np.random.choice(
+                np.arange(x_train.shape[0]),
+                size=batch_size,
+                replace=False)
+            x_train_batch = x_train[batch_indices]
+            target_concentrations_batch = target_concentrations[batch_indices]
+
             optimizer.zero_grad()
-            x_train_batch = x_train[start_index:start_index + batch_size]
-            y_train_batch = y_train[start_index:start_index + batch_size]
-            y_hat, mean, alphas, precision = model(x_train_batch)
-            assert_no_nan_no_inf(y_hat)
-            batch_loss = loss_fn(y_hat, y_train_batch)
+            logits, mean, model_concentrations, precision = model(x_train_batch)
+            assert_no_nan_no_inf(model_concentrations)
+            batch_loss = loss_fn(model_concentrations, target_concentrations_batch)
             assert_no_nan_no_inf(batch_loss)
             training_loss.append(batch_loss.item())
             batch_loss.backward()
@@ -352,21 +362,24 @@ def get_target_dirichlet(y_train, alpha_0, nb_class=3, epsilon=1e-4):
     return target_concentrations
 
 
-# TODO: get this working
 def kl_loss(model_concentrations, target_concentrations, reverse=True):
     """
     Input: Model concentrations, target concentrations parameters.
     Output: Average of the KL between the two Dirichlet.
     """
+    assert torch.all(model_concentrations > 0)
+    assert torch.all(target_concentrations > 0)
+
     target_dirichlet = Dirichlet(target_concentrations)
-    model_dirichlet = Dirichlet(
-        model_concentrations) 
+    model_dirichlet = Dirichlet(model_concentrations)
     if reverse:
         kl_divs = _kl_dirichlet_dirichlet(
-            p=target_dirichlet, q=model_dirichlet)
-    else:  # forward
+            p=model_dirichlet,
+            q=target_dirichlet)
+    else:
         kl_divs = _kl_dirichlet_dirichlet(
-            p=model_dirichlet, q=target_dirichlet)
+            p=target_dirichlet,
+            q=model_dirichlet)
     assert_no_nan_no_inf(kl_divs)
     mean_kl = torch.mean(kl_divs)
     return mean_kl
