@@ -59,18 +59,25 @@ mog_ood_in_middle_overlap = {
 
 rings = {
     'centers': np.array([
-        [0., 0.],
-        [0., 0.]]),
+        # [0., 0.],
+        [0., 0.]
+    ]),
     'inner_radii': np.array([
-        [0.],
-        [20.]]),
+        # [0.],
+        [20.]
+    ]),
     'outer_radii': np.array([
-        [1.],
-        [25.]]),
+        # [1.],
+        [25.]
+    ]),
     'n_samples_per_shell': np.array([
-        100, 100]),
+        # 100,
+        100
+    ]),
     'out_of_distribution': np.array([
-        False, False])
+        # False,
+        True
+    ])
 }
 
 
