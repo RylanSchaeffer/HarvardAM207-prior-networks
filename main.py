@@ -6,15 +6,27 @@ def main(args):
 
     train_data = utils_data.create_data(
         create_data_functions=[
-            utils_data.create_data_mixture_of_gaussians],
+            utils_data.create_data_spherical_shells,
+            # utils_data.create_data_mixture_of_gaussians,
+            utils_data.create_data_mixture_of_gaussians,
+        ],
         functions_args=[
-            utils_data.mog_ood_in_middle_overlap])
+            utils_data.rings,
+            # utils_data.mog_ood_in_middle_overlap,
+            utils_data.mog_three_in_distribution,
+        ])
 
     test_data = utils_data.create_data(
         create_data_functions=[
-            utils_data.create_data_mixture_of_gaussians],
+            utils_data.create_data_spherical_shells,
+            # utils_data.create_data_mixture_of_gaussians,
+            utils_data.create_data_mixture_of_gaussians,
+        ],
         functions_args=[
-            utils_data.mog_ood_in_middle_overlap])
+            utils_data.rings,
+            # utils_data.mog_ood_in_middle_overlap,
+            utils_data.mog_three_in_distribution,
+        ])
 
     model, optimizer, loss_fn = utils_run.setup(
         args=args,
@@ -35,9 +47,7 @@ def main(args):
         x_test=test_data['samples'],
         y_test=test_data['concentrations'])
 
-    # ood_indices = data['concentrations_test'].sum(1) == 3.
-
-    utils_run.plot_all(
+    utils_run.plot_results(
         train_samples=train_data['samples'],
         labels_train=train_data['targets'],
         train_concentrations=train_data['concentrations'],

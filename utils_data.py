@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.linalg import block_diag
 import torch
 
 
@@ -50,10 +51,26 @@ mog_ood_in_middle_overlap = {
         [[2.0, 0], [0, 2.0]],
         [[2.0, 0], [0, 2.0]],
     ]),
-    'n_samples_per_gaussian': np.array(
-        [100, 100, 100, 100]),
-    'out_of_distribution': np.array(
-        [False, False, False, True])
+    'n_samples_per_gaussian': np.array([
+        100, 100, 100, 100]),
+    'out_of_distribution': np.array([
+        False, False, False, True])
+}
+
+rings = {
+    'centers': np.array([
+        [0., 0.],
+        [0., 0.]]),
+    'inner_radii': np.array([
+        [0.],
+        [20.]]),
+    'outer_radii': np.array([
+        [1.],
+        [25.]]),
+    'n_samples_per_shell': np.array([
+        100, 100]),
+    'out_of_distribution': np.array([
+        False, False])
 }
 
 
@@ -65,9 +82,21 @@ def assert_no_nan_no_inf(x):
 def create_data(create_data_functions,
                 functions_args):
     """
+    We want the ability to chain together sequences of create_data_function
+    functions. Consequently, we need to do some bookkeeping to that
+    we correctly combine labels and concentrations.
+
+    For labels, each create_data_function creates classes numbered from
+    0, 1, ..., n-1. Thus, after each function call, we add 1 + largest
+    class label to the new labels to ensure each new label is unique.
+
+
+
     create_data_functions is a list of create_data_placeholder functions,
     specifying the
     output: np.array with samples from each gaussian.
+
+
     """
 
     for i, (create_data_function, function_kwargs) in \
@@ -80,10 +109,18 @@ def create_data(create_data_functions,
             new_samples, new_targets, new_concentrations = create_data_function(
                 **function_kwargs)
 
-            # append new samples to previous data
+            # append new samples to previous samples
             samples = np.concatenate((samples, new_samples), axis=0)
+
+            # append new targets to previous targets
+            # shift new targets to not overlap with previous targets
+            new_targets += np.max(targets) + 1
             targets = np.concatenate((targets, new_targets), axis=0)
-            concentrations = np.concatenate((concentrations, new_concentrations), axis=0)
+
+            # append new concentrations to previous concentrations
+            # can't forget to set off-diagonal 0s to 1!
+            concentrations = block_diag(concentrations, new_concentrations)
+            concentrations[concentrations == 0.] = 1.
 
     # shuffle data
     n_total_samples = samples.shape[0]
@@ -130,7 +167,6 @@ def create_data_mixture_of_gaussians(means,
     concentration parameters. If x_data and y_data are given, append the new
     samples to x_data, y_data and return those instead.
 
-
     :param prev_samples:
     :param prev_concentrations:
     :param prev_labels:
@@ -139,7 +175,7 @@ def create_data_mixture_of_gaussians(means,
     :param n_samples_per_gaussian: int, shape (number of gaussians, )
     :param out_of_distribution: bool,  shape (number of gaussians, )
     :return mog_samples: shape (sum(n_samples_per_gaussian), dim of gaussian)
-    :return mog_labels: int, shape (sum(n_samples_per_gaussian), )
+    :return mog_targets: int, shape (sum(n_samples_per_gaussian), )
     :return mog_concentrations: shape (sum(n_samples_per_gaussian), dim of gaussian)
     """
 
@@ -148,7 +184,7 @@ def create_data_mixture_of_gaussians(means,
 
     # preallocate arrays to store new samples
     mog_samples = np.zeros(shape=(n_total_samples, dim_of_gaussians))
-    mog_labels = np.zeros(shape=(n_total_samples,), dtype=np.int)
+    mog_targets = np.zeros(shape=(n_total_samples,), dtype=np.int)
 
     write_index = 0
     for i, (mean, covariance, n_samples) in \
@@ -159,8 +195,8 @@ def create_data_mixture_of_gaussians(means,
         mog_samples[write_index:write_index + n_samples] = gaussian_samples
 
         # generate and save labels
-        gaussian_labels = np.full(shape=n_samples, fill_value=i)
-        mog_labels[write_index:write_index + n_samples] = gaussian_labels
+        gaussian_targets = np.full(shape=n_samples, fill_value=i)
+        mog_targets[write_index:write_index + n_samples] = gaussian_targets
 
         write_index += n_samples
 
@@ -168,24 +204,77 @@ def create_data_mixture_of_gaussians(means,
     n_gaussians = (~out_of_distribution).sum()
     mog_concentrations = np.ones((n_total_samples, n_gaussians))
     in_distribution_rows = np.isin(
-        mog_labels,
+        mog_targets,
         np.argwhere(~out_of_distribution))
-    mog_concentrations[in_distribution_rows, mog_labels[in_distribution_rows]] += 100
+    mog_concentrations[in_distribution_rows, mog_targets[in_distribution_rows]] += 100
 
-    return mog_samples, mog_labels, mog_concentrations
+    return mog_samples, mog_targets, mog_concentrations
 
 
-def create_data_ring(prev_samples=None,
-                     prev_labels=None,
-                     prev_concentrations=None):
-    # append new samples to previous data, if provided
-    if prev_samples is not None:
-        # check that other arrays are also not None
-        assert prev_labels is not None
-        assert prev_concentrations is not None
+def create_data_spherical_shells(centers,
+                                 inner_radii,
+                                 outer_radii,
+                                 n_samples_per_shell,
+                                 out_of_distribution):
 
-        mog_samples = np.concatenate((mog_samples, prev_samples), axis=0)
-        mog_labels = np.concatenate((mog_labels, prev_labels), axis=0)
-        mog_concentrations = np.concatenate((mog_concentrations, prev_concentrations), axis=0)
+    """
 
-    return mog_samples, mog_labels, mog_concentrations
+    :param n_samples_per_shell:
+    :param outer_radii:
+    :param centers:
+    :param inner_radii:
+    :param center:
+    :param inner_radius:
+    :param outer_radius:
+    :param n_samples:
+    :param out_of_distribution:
+    :return:
+    """
+
+    # dimension of rings
+    dim_spherical_shells = centers.shape[1]
+    n_total_samples = n_samples_per_shell.sum()
+
+    # preallocate arrays to store new samples
+    shells_samples = np.zeros(shape=(n_total_samples, dim_spherical_shells))
+    shells_targets = np.zeros(shape=(n_total_samples,), dtype=np.int)
+
+    write_index = 0
+    for i, (center, inner_radius, outer_radius, n_samples) in \
+            enumerate(zip(centers, inner_radii, outer_radii, n_samples_per_shell)):
+
+        # generate and save samples
+        # we use the property that samples from a multivariate normal
+        # are uniformly on the shell when divided by their absolute values
+        gaussian_samples = np.random.multivariate_normal(
+            mean=np.zeros(dim_spherical_shells),
+            cov=np.identity(dim_spherical_shells),
+            size=n_samples)
+        shell_samples = np.divide(
+            gaussian_samples,
+            np.linalg.norm(gaussian_samples, axis=1, keepdims=True))
+
+        # sample ra
+        shell_radii = np.random.uniform(
+            low=inner_radius,
+            high=outer_radius,
+            size=(n_samples, 1))  # need 1 for broadcasting to agree
+        shell_samples = np.multiply(shell_samples, shell_radii)
+        shell_samples += center
+
+        shells_samples[write_index:write_index + n_samples] = shell_samples
+
+        # generate and save labels
+        shells_targets[write_index:write_index + n_samples] = i
+
+        write_index += n_samples
+
+    # generate concentrations
+    n_shells = (~out_of_distribution).sum()
+    shells_concentrations = np.ones((n_total_samples, n_shells))
+    in_distribution_rows = np.isin(
+        shells_targets,
+        np.argwhere(~out_of_distribution))
+    shells_concentrations[in_distribution_rows, shells_targets[in_distribution_rows]] += 100
+
+    return shells_samples, shells_targets, shells_concentrations

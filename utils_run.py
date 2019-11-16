@@ -131,33 +131,6 @@ def kl_forward(model_concentrations, target_concentrations):
     return mean_kl
 
 
-def plot_all(train_samples,
-             labels_train,
-             train_concentrations,
-             model,
-             training_loss):
-    plot_training_data(x_train=train_samples, labels_train=labels_train)
-    plot_training_loss(training_loss=training_loss)
-    plot_decision_surface(model=model, x_train=train_samples, labels_train=labels_train)
-
-
-def plot_training_data(x_train,
-                       labels_train):
-    plot_data = go.Scatter(
-        x=x_train[:, 0],
-        y=x_train[:, 1],
-        mode='markers',
-        marker=dict(color=labels_train))
-
-    layout = dict(
-        title='Training Data',
-        xaxis=dict(title='x'),
-        yaxis=dict(title='y'))
-
-    fig = go.Figure(data=plot_data, layout=layout)
-    fig.show()
-
-
 def plot_decision_surface(model,
                           x_train,
                           labels_train):
@@ -181,7 +154,7 @@ def plot_decision_surface(model,
         # add training points
         go.Scatter3d(x=x_train[:, 0],
                      y=x_train[:, 1],
-                     z=1.1 * np.ones(x_train.shape[0]),
+                     z=1.1 * np.full(x_train.shape[0], fill_value=np.max(entropy_of_means)),
                      mode='markers',
                      marker=dict(color=labels_train))
     ]
@@ -194,6 +167,34 @@ def plot_decision_surface(model,
             yaxis=dict(title='input_dim_2')
         )
     )
+
+    fig = go.Figure(data=plot_data, layout=layout)
+    fig.show()
+
+
+def plot_results(train_samples,
+                 labels_train,
+                 train_concentrations,
+                 model,
+                 training_loss):
+
+    plot_training_data(x_train=train_samples, labels_train=labels_train)
+    plot_training_loss(training_loss=training_loss)
+    plot_decision_surface(model=model, x_train=train_samples, labels_train=labels_train)
+
+
+def plot_training_data(x_train,
+                       labels_train):
+    plot_data = go.Scatter(
+        x=x_train[:, 0],
+        y=x_train[:, 1],
+        mode='markers',
+        marker=dict(color=labels_train))
+
+    layout = dict(
+        title='Training Data',
+        xaxis=dict(title='x'),
+        yaxis=dict(title='y'))
 
     fig = go.Figure(data=plot_data, layout=layout)
     fig.show()
