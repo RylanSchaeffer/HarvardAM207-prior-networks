@@ -131,14 +131,14 @@ def kl_forward(model_concentrations, target_concentrations):
     return mean_kl
 
 
-def plot_all(x_train,
+def plot_all(train_samples,
              labels_train,
-             concentrations_train,
+             train_concentrations,
              model,
              training_loss):
-    plot_training_data(x_train=x_train, labels_train=labels_train)
+    plot_training_data(x_train=train_samples, labels_train=labels_train)
     plot_training_loss(training_loss=training_loss)
-    plot_decision_surface(model=model, x_train=x_train, labels_train=labels_train)
+    plot_decision_surface(model=model, x_train=train_samples, labels_train=labels_train)
 
 
 def plot_training_data(x_train,
