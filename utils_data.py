@@ -4,11 +4,11 @@ import torch
 
 
 mog_three_in_distribution = {
-    'means': 5 * np.array([
+    'gaussians_means': 5 * np.array([
         [0., 2.],
         [-np.sqrt(3), -1.],
         [np.sqrt(3), -1.]]),
-    'covariances': np.array([
+    'gaussians_covariances': np.array([
         [[2.0, 0], [0, 2.0]],
         [[2.0, 0], [0, 2.0]],
         [[2.0, 0], [0, 2.0]],
@@ -21,12 +21,12 @@ mog_three_in_distribution = {
 
 
 mog_ood_in_middle_no_overlap = {
-    'means': 5 * np.array([
+    'gaussians_means': 5 * np.array([
         [0., 2.],
         [-np.sqrt(3), -1.],
         [np.sqrt(3), -1.],
         [0., 0.]]),
-    'covariances': np.array([
+    'gaussians_covariances': np.array([
         [[2.0, 0], [0, 2.0]],
         [[2.0, 0], [0, 2.0]],
         [[2.0, 0], [0, 2.0]],
@@ -40,12 +40,12 @@ mog_ood_in_middle_no_overlap = {
 
 
 mog_ood_in_middle_overlap = {
-    'means': 2 * np.array([
+    'gaussians_means': 2 * np.array([
         [0., 2.],
         [-np.sqrt(3), -1.],
         [np.sqrt(3), -1.],
         [0., 0.]]),
-    'covariances': np.array([
+    'gaussians_covariances': np.array([
         [[2.0, 0], [0, 2.0]],
         [[2.0, 0], [0, 2.0]],
         [[2.0, 0], [0, 2.0]],
@@ -77,6 +77,26 @@ rings = {
     'out_of_distribution': np.array([
         # False,
         True
+    ])
+}
+
+
+parallelepipeds = {
+    'parallelepiped_centers': np.array([
+        [2., 2.],
+        [-4., -4.]
+    ]),
+    'skew_matrices': np.array([
+        [[2.0, 2.0], [0, 1.0]],
+        [[-1.0, 0], [-2.0, -2.0]],
+    ]),
+    'n_samples_per_parallelepiped': np.array([
+        100,
+        100
+    ]),
+    'out_of_distribution': np.array([
+        False,
+        False
     ])
 }
 
@@ -165,8 +185,49 @@ def create_data(create_data_functions,
     return data
 
 
-def create_data_mixture_of_gaussians(means,
-                                     covariances,
+def create_data_parallelepipeds(parallelepiped_centers,
+                                skew_matrices,
+                                n_samples_per_parallelepiped,
+                                out_of_distribution):
+
+    dim_of_parallelepiped = parallelepiped_centers.shape[1]
+    n_total_samples = n_samples_per_parallelepiped.sum()
+
+    # preallocate arrays to store new samples
+    parallelepipeds_samples = np.zeros(shape=(n_total_samples, dim_of_parallelepiped))
+    parallelepipeds_targets = np.zeros(shape=(n_total_samples,), dtype=np.int)
+
+    write_index = 0
+    for i, (center, skew_matrix, n_samples) in \
+            enumerate(zip(parallelepiped_centers, skew_matrices, n_samples_per_parallelepiped)):
+
+        # generate and save samples
+        uniform_samples = np.random.uniform(
+            low=-1, high=1, size=(n_samples, dim_of_parallelepiped))
+        parallelepiped_samples = center + np.matmul(skew_matrix, uniform_samples.T).T
+        parallelepipeds_samples[write_index:write_index + n_samples] = \
+            parallelepiped_samples
+
+        # generate and save labels
+        parallelepiped_targets = np.full(shape=n_samples, fill_value=i)
+        parallelepipeds_targets[write_index:write_index + n_samples] = \
+            parallelepiped_targets
+
+        write_index += n_samples
+
+    # generate concentrations
+    n_parallelepipeds = (~out_of_distribution).sum()
+    parallelepipeds_concentrations = np.ones((n_total_samples, n_parallelepipeds))
+    in_distribution_rows = np.isin(
+        parallelepipeds_targets,
+        np.argwhere(~out_of_distribution))
+    parallelepipeds_concentrations[in_distribution_rows, parallelepipeds_targets[in_distribution_rows]] += 100
+
+    return parallelepipeds_samples, parallelepipeds_targets, parallelepipeds_concentrations
+
+
+def create_data_mixture_of_gaussians(gaussians_means,
+                                     gaussians_covariances,
                                      n_samples_per_gaussian,
                                      out_of_distribution):
     """
@@ -177,8 +238,8 @@ def create_data_mixture_of_gaussians(means,
     :param prev_samples:
     :param prev_concentrations:
     :param prev_labels:
-    :param means: shape (number of gaussians, dim of gaussian)
-    :param covariances: shape (number of gaussians, dim of gaussian, dim_of_gaussian)
+    :param gaussians_means: shape (number of gaussians, dim of gaussian)
+    :param gaussians_covariances: shape (number of gaussians, dim of gaussian, dim_of_gaussian)
     :param n_samples_per_gaussian: int, shape (number of gaussians, )
     :param out_of_distribution: bool,  shape (number of gaussians, )
     :return mog_samples: shape (sum(n_samples_per_gaussian), dim of gaussian)
@@ -186,7 +247,7 @@ def create_data_mixture_of_gaussians(means,
     :return mog_concentrations: shape (sum(n_samples_per_gaussian), dim of gaussian)
     """
 
-    dim_of_gaussians = means.shape[1]
+    dim_of_gaussians = gaussians_means.shape[1]
     n_total_samples = n_samples_per_gaussian.sum()
 
     # preallocate arrays to store new samples
@@ -195,7 +256,7 @@ def create_data_mixture_of_gaussians(means,
 
     write_index = 0
     for i, (mean, covariance, n_samples) in \
-            enumerate(zip(means, covariances, n_samples_per_gaussian)):
+            enumerate(zip(gaussians_means, gaussians_covariances, n_samples_per_gaussian)):
         # generate and save samples
         gaussian_samples = np.random.multivariate_normal(
             mean=mean, cov=covariance, size=n_samples)
