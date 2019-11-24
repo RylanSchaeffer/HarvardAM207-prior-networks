@@ -101,7 +101,6 @@ def create_data(args,
         x_test=x_train,
         labels_test=labels_train,
         concentrations_test=concentrations_train)
-
     return data
 
 
