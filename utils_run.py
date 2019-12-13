@@ -7,6 +7,8 @@ from torch.distributions import Categorical, Dirichlet
 from torch.distributions.kl import _kl_dirichlet_dirichlet
 import torch.nn.functional as F
 import tqdm
+from scipy import special
+from scipy import stats
 
 import models
 
@@ -30,7 +32,7 @@ def create_arg_parser():
     parser.add_argument('--n_epochs',
                         help='Number of epochs to train',
                         type=int,
-                        default=500)
+                        default=1000)
     parser.add_argument('--batch_size',
                         help='Number of data per batch',
                         type=int,
@@ -55,7 +57,7 @@ def create_loss_fn(reverse):
 
 def create_model(in_dim,
                  out_dim):
-    model = models.TwoLayer(n_in=in_dim, n_out=out_dim, n_hidden=12)
+    model = models.TwoLayer(n_in=in_dim, n_out=out_dim, n_hidden=50)
     return model
 
 
@@ -71,6 +73,11 @@ def entropy_categorical(categorical_parameters):
     entropy = entropy.detach().numpy()
     return entropy
 
+def mutual_information(dirichlet_concentrations):
+    dirichlet_concentrations = dirichlet_concentrations.detach().numpy()
+    dirichlet_concentrations_sum = dirichlet_concentrations.sum()
+    res = (1.0/dirichlet_concentrations_sum)*dirichlet_concentrations*(np.log(dirichlet_concentrations*1.0/dirichlet_concentrations_sum)-special.digamma(dirichlet_concentrations+1)+special.digamma(dirichlet_concentrations_sum+1))
+    return res.sum() * (-1.0)
 
 def entropy_dirichlet(dirichlet_concentrations):
     entropy = Dirichlet(dirichlet_concentrations).entropy()
@@ -172,6 +179,48 @@ def plot_decision_surface(model,
     fig.show()
 
 
+def plot_bound_MI(model,
+                  x_train,
+                  labels_train):
+    # discretize input space i.e. all possible pairs of coordinates
+    # between [-40, 40] x [-40, 40]
+    possible_vals = np.linspace(-40, 40, 81)
+    x_vals, y_vals = np.meshgrid(possible_vals, possible_vals)
+    grid_inputs = np.stack((x_vals.flatten(), y_vals.flatten()), axis=1)
+    grid_inputs = torch.tensor(grid_inputs, dtype=torch.float32)
+
+    # forward pass model
+    y_hat, means, alphas, precision = model(grid_inputs)
+    mi = []
+    for i in range(len(alphas.detach().numpy())):
+        mi.append(mutual_information(dirichlet_concentrations=alphas[i]))
+    mi = np.array(mi)
+
+    plot_data = [
+        # add model outputs
+        go.Surface(x=possible_vals,
+                   y=possible_vals,
+                   z=mi.reshape(x_vals.shape)),
+        # add training points
+        go.Scatter3d(x=x_train[:, 0],
+                     y=x_train[:, 1],
+                     z=1.1 * np.full(x_train.shape[0], fill_value=np.max(mi)),
+                     mode='markers',
+                     marker=dict(color=labels_train))
+    ]
+
+    layout = dict(
+        title='Decision Surface',
+        scene=dict(
+            zaxis=dict(title='Mutual Information'),
+            xaxis=dict(title='input_dim_1'),
+            yaxis=dict(title='input_dim_2')
+        )
+    )
+
+    fig = go.Figure(data=plot_data, layout=layout)
+    fig.show()
+
 def plot_results(train_samples,
                  labels_train,
                  train_concentrations,
@@ -181,6 +230,7 @@ def plot_results(train_samples,
     plot_training_data(x_train=train_samples, labels_train=labels_train)
     plot_training_loss(training_loss=training_loss)
     plot_decision_surface(model=model, x_train=train_samples, labels_train=labels_train)
+    plot_bound_MI(model=model, x_train=train_samples, labels_train=labels_train)
 
 
 def plot_training_data(x_train,

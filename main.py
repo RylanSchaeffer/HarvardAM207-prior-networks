@@ -7,15 +7,18 @@ def main(args):
     train_data = utils_data.create_data(
         create_data_functions=[
             utils_data.create_data_parallelepipeds,
-            # utils_data.create_data_spherical_shells,
-            # utils_data.create_data_mixture_of_gaussians,
+            #utils_data.create_data_spherical_shells,
+            #utils_data.create_data_mixture_of_gaussians,
             # utils_data.create_data_mixture_of_gaussians,
         ],
         functions_args=[
-            utils_data.parallelepipeds,
-            # utils_data.rings,
-            # utils_data.mog_ood_in_middle_overlap,
+            # utils_data.parallelepipeds,
+            #vutils_data.rings,
+            #utils_data.mog_ood_in_middle_overlap,
             # utils_data.mog_three_in_distribution,
+            # utils_data.mog_ood_in_middle_no_overlap
+            utils_data.parallelepipeds_ood_in_between
+            #utils_data.mog_three_in_distribution_overlap
         ])
 
     # test_data = utils_data.create_data(
