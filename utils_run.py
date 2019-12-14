@@ -20,7 +20,7 @@ def assert_no_nan_no_inf(x):
 
 def create_args():
     parser = create_arg_parser()
-    args = parser.parse_args()
+    args = parser.parse_args(args=[]) #need this to work in jupyter notebooks
     return args
 
 
@@ -28,7 +28,8 @@ def create_arg_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument('--reverse',
                         help='Use Backward KL. If unspecified, use Forward KL',
-                        action='store_true')
+                        action='store_true',
+                        default=True)
     parser.add_argument('--n_epochs',
                         help='Number of epochs to train',
                         type=int,
@@ -62,8 +63,8 @@ def create_model(in_dim,
 
 
 def create_optimizer(model, lr=0.01):
-    for name, param in model.named_parameters():
-        print(name, "Requires grad?", param.requires_grad)
+    #for name, param in model.named_parameters():
+        #print(name, "Requires grad?", param.requires_grad)
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
     return optimizer
 
@@ -179,6 +180,48 @@ def plot_decision_surface(model,
     fig.show()
 
 
+def plot_decision_surface_LR(model,
+                          x_train,
+                          labels_train):
+    # discretize input space i.e. all possible pairs of coordinates
+    # between [-40, 40] x [-40, 40]
+    possible_vals = np.linspace(-40, 40, 81)
+    x_vals, y_vals = np.meshgrid(possible_vals, possible_vals)
+    grid_inputs = np.stack((x_vals.flatten(), y_vals.flatten()), axis=1)
+    grid_inputs = torch.tensor(grid_inputs, dtype=torch.float32)
+
+    # forward pass model
+    y_hat = model(grid_inputs)
+
+    entropy = entropy_categorical(categorical_parameters=y_hat)
+
+    plot_data = [
+        # add model outputs
+        go.Surface(x=possible_vals,
+                   y=possible_vals,
+                   z=entropy.reshape(x_vals.shape)),
+        # add training points
+        go.Scatter3d(x=x_train[:, 0],
+                     y=x_train[:, 1],
+                     z=1.1 * np.full(x_train.shape[0], fill_value=np.max(entropy)),
+                     mode='markers',
+                     marker=dict(color=labels_train))
+    ]
+
+    layout = dict(
+        title='Decision Surface',
+        scene=dict(
+            zaxis=dict(title='Entropy of predictions'),
+            xaxis=dict(title='input_dim_1'),
+            yaxis=dict(title='input_dim_2')
+        )
+    )
+
+    fig = go.Figure(data=plot_data, layout=layout)
+    fig.show()
+
+
+
 def plot_bound_MI(model,
                   x_train,
                   labels_train):
@@ -239,7 +282,8 @@ def plot_training_data(x_train,
         x=x_train[:, 0],
         y=x_train[:, 1],
         mode='markers',
-        marker=dict(color=labels_train))
+        marker=dict(color=labels_train)
+    )
 
     layout = dict(
         title='Training Data',
@@ -316,6 +360,46 @@ def train_model(model,
             training_loss.append(batch_loss.item())
             batch_loss.backward()
             optimizer.step()
-        print("Last obtained batch_loss", batch_loss.item())
+        #print("Last obtained batch_loss", batch_loss.item())
 
     return model, optimizer, training_loss
+
+def train_LR(model,
+             optimizer,
+             n_epochs,
+             batch_size,
+             x_train,
+             labels,
+             ):
+
+
+    # set model in training mode
+    model.train()
+    loss_fn = torch.nn.NLLLoss()
+    # train model
+    training_loss = []
+    num_samples = x_train.shape[0]
+    for epoch in range(n_epochs):
+        for _ in range(num_samples // batch_size):
+            # randomly sample indices for batch
+            batch_indices = np.random.choice(
+                np.arange(x_train.shape[0]),
+                size=batch_size,
+                replace=False)
+            x_train_batch = x_train[batch_indices]
+            labels_batch = labels[batch_indices]
+
+
+            optimizer.zero_grad()
+            logits = model(x_train_batch)
+            batch_loss = loss_fn(logits, labels_batch)
+            assert_no_nan_no_inf(batch_loss)
+            training_loss.append(batch_loss.item())
+            batch_loss.backward()
+            optimizer.step()
+        #print("Last obtained batch_loss", batch_loss.item())
+
+    return model, optimizer, training_loss
+
+
+

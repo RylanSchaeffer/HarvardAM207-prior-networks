@@ -22,7 +22,6 @@ class OneLayer(torch.nn.Module):
 
     def forward(self, x):
         logits = self.feedforward_layers(x)
-        # TODO: ask Theo what means is
         means = F.softmax(logits / self.alpha_0, dim=1)  # I have doubts about alpha 0..
         alphas = torch.exp(logits)
         precision = torch.sum(alphas)
@@ -46,8 +45,26 @@ class TwoLayer(nn.Module):
 
     def forward(self, x):
         logits = self.feedforward_layers(x)
-        # TODO: ask Theo what mean is
         alphas = torch.exp(logits) + 1
         mean = alphas / alphas.sum(dim=1).unsqueeze(dim=1)
         precision = torch.sum(alphas)
         return logits, mean, alphas, precision
+
+
+
+# instantiate Logistic regression model
+class LR(torch.nn.Module):
+    def __init__(self,
+                 alpha_0=3.):
+        super().__init__()
+        self.alpha_0 = alpha_0
+        self.weights = nn.Linear(
+            in_features=2,
+            out_features=3)
+
+    def forward(self, x):
+        alphas = self.weights(x)
+        assert_no_nan_no_inf(alphas)
+        output = F.softmax(alphas / self.alpha_0, dim=1)
+        assert_no_nan_no_inf(output)
+        return output

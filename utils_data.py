@@ -19,6 +19,26 @@ mog_three_in_distribution = {
         [False, False, False])
 }
 
+mog_three_in_distribution_one_out = {
+    'gaussians_means': 5 * np.array([
+        [0., 2.],
+        [-np.sqrt(3), -1.],
+        [np.sqrt(3), -1.],
+        [-5., -5.]]
+    ),
+    'gaussians_covariances': np.array([
+        [[2.0, 0], [0, 2.0]],
+        [[2.0, 0], [0, 2.0]],
+        [[2.0, 0], [0, 2.0]],
+        [[2.0, 0], [0, 2.0]],
+    ]),
+    'n_samples_per_gaussian': np.array(
+        [100, 100, 100, 100]),
+    'out_of_distribution': np.array(
+        [False, False, False, True])
+}
+
+
 mog_three_in_distribution_overlap = {
     'gaussians_means': 5 * np.array([
         [0., 1.],
