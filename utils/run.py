@@ -151,7 +151,6 @@ def train_model(model,
             optimizer.zero_grad()
             model_outputs = model(x_batch)
 
-            # logits, mean, model_concentrations, precision
             loss_inputs = {
                 'model_outputs': model_outputs,
                 'x_batch': x_batch,
