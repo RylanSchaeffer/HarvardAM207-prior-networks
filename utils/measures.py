@@ -3,6 +3,7 @@ import torch
 from torch.distributions import Categorical, Dirichlet
 from torch.distributions.kl import _kl_dirichlet_dirichlet
 from torch.nn import NLLLoss
+from scipy import special
 
 
 def assert_no_nan_no_inf(x):
@@ -12,7 +13,7 @@ def assert_no_nan_no_inf(x):
 
 def kl_divergence(model_concentrations,
                   target_concentrations,
-                  mode='forward'):
+                  mode='reverse'):
     """
     Input: Model concentrations, target concentrations parameters.
     Output: Average of the KL between the two Dirichlet.
@@ -32,7 +33,7 @@ def kl_divergence(model_concentrations,
 
 
 def kl_loss_fn(loss_input,
-               mode='forward'):
+               mode='reverse'):
 
     model_concentrations = loss_input['model_outputs']['concentrations']
     target_concentrations = loss_input['y_concentrations_batch']
@@ -85,5 +86,5 @@ def mutual_info_dirichlet(dirichlet_concentrations):
     dirichlet_concentrations_sum = dirichlet_concentrations.sum()
     res = (1.0/dirichlet_concentrations_sum)*dirichlet_concentrations*(np.log(dirichlet_concentrations*1.0/dirichlet_concentrations_sum)-special.digamma(dirichlet_concentrations+1)+special.digamma(dirichlet_concentrations_sum+1))
     final_res = res.sum() * (-1.0)
-    assert_no_nan_no_inf(final_res)
+    #assert_no_nan_no_inf(final_res)
     return final_res
