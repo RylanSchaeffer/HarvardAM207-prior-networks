@@ -19,6 +19,42 @@ mog_three_in_distribution = {
         [False, False, False])
 }
 
+mog_three_in_distribution_one_out = {
+    'gaussians_means': 5 * np.array([
+        [0., 2.],
+        [-np.sqrt(3), -1.],
+        [np.sqrt(3), -1.],
+        [-5., -5.]]
+    ),
+    'gaussians_covariances': np.array([
+        [[2.0, 0], [0, 2.0]],
+        [[2.0, 0], [0, 2.0]],
+        [[2.0, 0], [0, 2.0]],
+        [[2.0, 0], [0, 2.0]],
+    ]),
+    'n_samples_per_gaussian': np.array(
+        [100, 100, 100, 100]),
+    'out_of_distribution': np.array(
+        [False, False, False, True])
+}
+
+
+mog_three_in_distribution_overlap = {
+    'gaussians_means': 5 * np.array([
+        [0., 1.],
+        [-1, 0.],
+        [1, 0]]),
+    'gaussians_covariances': np.array([
+        [[4, 0], [0, 4]],
+        [[4, 0], [0, 4]],
+        [[4, 0], [0, 4]],
+    ]),
+    'n_samples_per_gaussian': np.array(
+        [100, 100, 100]),
+    'out_of_distribution': np.array(
+        [False, False, False])
+}
+
 
 mog_ood_in_middle_no_overlap = {
     'gaussians_means': 5 * np.array([
@@ -59,23 +95,23 @@ mog_ood_in_middle_overlap = {
 
 rings = {
     'centers': np.array([
-        # [0., 0.],
+        #[0., 0.],
         [0., 0.]
     ]),
     'inner_radii': np.array([
-        # [0.],
+        #[0.],
         [20.]
     ]),
     'outer_radii': np.array([
-        # [1.],
+        #[20],
         [25.]
     ]),
     'n_samples_per_shell': np.array([
-        # 100,
+        #100,
         100
     ]),
     'out_of_distribution': np.array([
-        # False,
+        #False,
         True
     ])
 }
@@ -97,6 +133,29 @@ parallelepipeds = {
     'out_of_distribution': np.array([
         False,
         False
+    ])
+}
+
+parallelepipeds_ood_in_between = {
+    'parallelepiped_centers': np.array([
+        [2., 2.],
+        [-4., -4.],
+        [-1., -1.]
+    ]),
+    'skew_matrices': np.array([
+        [[2.0, 2.0], [0, 1.0]],
+        [[-1.0, 0], [-2.0, -2.0]],
+        [[2.0, 2.0], [-2.0, -2.0]]
+    ]),
+    'n_samples_per_parallelepiped': np.array([
+        100,
+        100,
+        100
+    ]),
+    'out_of_distribution': np.array([
+        False,
+        False,
+        True
     ])
 }
 
