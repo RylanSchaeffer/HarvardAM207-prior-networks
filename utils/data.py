@@ -69,7 +69,7 @@ mog_ood_in_middle_no_overlap = {
         [[2.0, 0], [0, 2.0]],
     ]),
     'n_samples_per_gaussian': np.array(
-        [100, 100, 100, 100]),
+        [100, 100, 100, 500]),
     'out_of_distribution': np.array(
         [False, False, False, True])
 }
@@ -108,7 +108,7 @@ rings = {
     ]),
     'n_samples_per_shell': np.array([
         #100,
-        100
+        1000
     ]),
     'out_of_distribution': np.array([
         #False,

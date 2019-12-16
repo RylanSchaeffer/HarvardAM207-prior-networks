@@ -101,6 +101,65 @@ def plot_decision_surface(model,
 #     fig.show()
 
 
+def plot_MI(model,
+            samples,
+            labels,
+            labels_names,
+            x_axis_title,
+            y_axis_title,
+            possible_xvals=np.linspace(-40, 40, 81),
+            possible_yvals=np.linspace(-35, 25, 81)):
+
+    # discretize input space i.e. all possible pairs of coordinates
+    x_vals, y_vals = np.meshgrid(possible_xvals, possible_yvals)
+    grid_inputs = np.stack((x_vals.flatten(), y_vals.flatten()), axis=1)
+    grid_inputs = torch.tensor(grid_inputs, dtype=torch.float32)
+
+    # forward pass model
+    model_outputs = model(grid_inputs)
+    alphas = model_outputs['concentrations']
+
+    mi = []
+    for i in range(len(alphas.detach().numpy())):
+        mi.append(utils.measures.mutual_info_dirichlet(dirichlet_concentrations=alphas[i]))
+    mi = np.array(mi)
+
+    z_vals = mi
+    max_z_val = np.max(z_vals)
+
+    # create decision surface
+    traces = [go.Surface(
+        x=possible_xvals,
+        y=possible_yvals,
+        z=z_vals.reshape(x_vals.shape),
+        showscale=False)]
+
+    # add plot
+    unique_labels = np.unique(labels)
+    for unique_label, label_name in zip(unique_labels, labels_names):
+        # add training points
+        scatter_trace = go.Scatter3d(x=samples[labels == unique_label, 0],
+                     y=samples[labels == unique_label, 1],
+                     name=label_name,
+                     z=1.1 * np.full(samples.shape[0], fill_value=max_z_val),
+                     mode='markers',
+                     marker=dict(color=unique_label))
+        traces.append(scatter_trace)
+
+    layout = dict(
+        title='Decision Surface',
+        scene=dict(
+            zaxis=dict(title="Mutual Information"),
+            xaxis=dict(title=x_axis_title),
+            yaxis=dict(title=y_axis_title)
+        )
+    )
+
+
+    fig = go.Figure(data=traces, layout=layout)
+    fig.show()
+
+"""
 def plot_bound_MI(model,
                   x_train,
                   labels_train):
@@ -142,7 +201,7 @@ def plot_bound_MI(model,
 
     fig = go.Figure(data=plot_data, layout=layout)
     fig.show()
-
+"""
 
 def plot_results(train_samples,
                  labels_train,
@@ -153,7 +212,7 @@ def plot_results(train_samples,
     plot_training_data(samples=train_samples, labels=labels_train)
     plot_training_loss(training_loss=training_loss)
     plot_decision_surface(model=model, samples=train_samples, labels=labels_train)
-    plot_bound_MI(model=model, x_train=train_samples, labels_train=labels_train)
+    plot_MI(model=model, x_train=train_samples, labels_train=labels_train)
 
 
 def plot_training_data(samples,
