@@ -96,10 +96,6 @@ def main(args, data):
     plot.plot_alphas_histogram(
         out_eval, nb_classes=3, renderer=args['renderer'])
     plot.plot_precision_train(precision_train, renderer=args['renderer'])
-    #if args['plot_dirichlet']:
-    #plot.plot_dirichlet_model(model, data)
-    #plt.show()
-    #print('debug')
     return model, tracks
 
 if __name__ == "__main__":
