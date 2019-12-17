@@ -37,7 +37,7 @@ class FeedforwardNetwork(torch.nn.Module):
     def forward(self, x):
         logits = self.feedforward_layers(x)
         assert_no_nan_no_inf(logits)
-
+        #I want control over that. 
         concentrations = torch.exp(logits) + 1
         assert_no_nan_no_inf(concentrations)
 
@@ -60,6 +60,40 @@ class FeedforwardNetwork(torch.nn.Module):
         return model_outputs
 
 
+class ExperimentalNetwork(FeedforwardNetwork):
+    # Have control over overflow term
+    def __init__(self, *args,
+                        epsilon=0.1):
+        super().__init__(*args)
+        self.epsilon = epsilon #Avoir Overflow 
+        #self.dropout_p = dropout_p
+
+    def forward(self, x):
+        logits = self.feedforward_layers(x)
+        assert_no_nan_no_inf(logits)
+        #I want control over that.
+        concentrations = torch.exp(logits) + self.epsilon
+        assert_no_nan_no_inf(concentrations)
+
+        mean = concentrations / concentrations.sum(dim=1).unsqueeze(dim=1)
+        assert_no_nan_no_inf(mean)
+
+        precision = torch.sum(concentrations, axis=1)
+        assert_no_nan_no_inf(precision)
+
+        y_pred = F.softmax(concentrations / self.alpha_0, dim=1)
+        assert_no_nan_no_inf(y_pred)
+
+        model_outputs = {
+            'logits': logits,
+            'mean': mean,
+            'concentrations': concentrations,
+            'precision': precision,
+            'y_pred': y_pred
+        }
+        return model_outputs
+        
+
 class LogisticRegression(torch.nn.Module):
 
     def __init__(self,
@@ -77,6 +111,7 @@ class LogisticRegression(torch.nn.Module):
         alphas = self.weights(x)
         assert_no_nan_no_inf(alphas)
         logits = alphas / self.alpha_0
+        #Why do we need to devide by alpha_0.
         y_pred = F.softmax(alphas / self.alpha_0, dim=1)
         assert_no_nan_no_inf(y_pred)
         model_outputs = {
