@@ -43,6 +43,9 @@ def create_arg_parser():
                         help="learning rate",
                         type=float,
                         default=0.01)
+    parser.add_argument('--track_mode', 
+                        help="keep track of the model output during training", 
+                        action='store_true')
     return parser
 
 
@@ -112,12 +115,12 @@ def setup(in_dim,
 
 
 def train_model(model,
-                optimizer,
-                loss_fn,
-                n_epochs,
-                batch_size,
-                train_data,
-                args):
+               optimizer,
+               loss_fn,
+               n_epochs,
+               batch_size,
+               train_data,
+               args):
 
     # TODO: Keep track of the model_concentrations parameters. Maybe an output dictionnary so that we can
     # keep track or more/less things that we want to investigate, e.g:
@@ -165,3 +168,68 @@ def train_model(model,
             optimizer.step()
 
     return model, optimizer, training_loss
+
+
+def train_model_exp(model,
+                optimizer,
+                loss_fn,
+                n_epochs,
+                batch_size,
+                train_data,
+                args):
+    #TODO: 
+    #Careful-work for Theo's experiments so far.
+    if args['track_mode']:
+        tracks = {'concentrations': [], 'precision': [], 
+                  'y_concentrations_batch': []}
+    # set model in training mode
+    model.train()
+
+    torch.manual_seed(0)
+
+    # extract data
+    x = train_data['samples']
+    y = train_data['targets']
+    y_concentrations = train_data['concentrations']
+
+    # train model
+    training_loss = []
+    num_samples = x.shape[0]
+    for epoch in range(n_epochs):
+        for _ in range(num_samples // batch_size):
+
+            # randomly sample indices for batch
+            batch_indices = np.random.choice(
+                np.arange(x.shape[0]),
+                size=batch_size,
+                replace=False)
+            x_batch = x[batch_indices]
+            y_batch = y[batch_indices]
+            y_concentrations_batch = y_concentrations[batch_indices]
+
+            optimizer.zero_grad()
+            model_outputs = model(x_batch)
+
+            loss_inputs = {
+                'model_outputs': model_outputs,
+                'x_batch': x_batch,
+                'y_batch': y_batch,
+                'y_concentrations_batch': y_concentrations_batch,
+            }
+            #Will probably break with loss fn that are not kl
+            batch_loss = loss_fn(loss_inputs, mode=args['mode'])
+            assert_no_nan_no_inf(batch_loss)
+            training_loss.append(batch_loss.item())
+            if args['track_mode']:
+                for key in tracks:
+                    try:
+                        tracks[key].append(model_outputs[key])
+                    except:    
+                        tracks[key].append(loss_inputs[key])
+            batch_loss.backward()
+            optimizer.step()
+    if args['track_mode']:
+        tracks['training_loss'] = training_loss
+        return model, optimizer, tracks
+    else:    
+        return model, optimizer, training_loss
