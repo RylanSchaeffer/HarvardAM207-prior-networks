@@ -27,6 +27,7 @@ def create_arg_parser():
                              ' Backward KL. If unspecified, use Forward KL',
                         action='store_true',
                         default=True)
+    #THEO: Cannot specify forward.
     parser.add_argument('--n_epochs',
                         help='Number of epochs to train',
                         type=int,
