@@ -44,6 +44,7 @@ def experimental_setup():
                     help='If verbose, print loss values obtained during training')
     parser.add_argument('--renderer', default='png',
                     help='rendered for png/vs interactive plots. Choose png or chrome for instance')
+    parser.add_argument('--plot_all', action='store_true', help='whether to show 3 or 6 of the training plots. Default=False')
     args = parser.parse_args()
     args = vars(args)
     #Turn into dict
@@ -92,10 +93,11 @@ def main(args, data):
                  target_concentrations,
                  model,
                 tracks['training_loss'])
-    plot.plot_alphas_train(out_train, nb_classes=3, renderer=args['renderer'])
-    plot.plot_alphas_histogram(
-        out_eval, nb_classes=3, renderer=args['renderer'])
-    plot.plot_precision_train(precision_train, renderer=args['renderer'])
+    if args['plot_all']:
+        plot.plot_alphas_train(out_train, nb_classes=3, renderer=args['renderer'])
+        plot.plot_alphas_histogram(
+            out_eval, nb_classes=3, renderer=args['renderer'])
+        plot.plot_precision_train(precision_train, renderer=args['renderer'])
     return model, tracks
 
 if __name__ == "__main__":
